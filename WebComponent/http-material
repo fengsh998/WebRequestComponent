@@ -1,0 +1,119 @@
+                                
+                                
+                                
+                                        http 知识汇总
+
+                                            协议头相关知识
+    “如果head中有Content-Length，那么这个Content-Length既表示实体长度，又表示传输长度。如果实体长度和传输长度不
+    相等（比如说设置了Transfer-Encoding），那么则不能设置Content-Length。如果设置了Transfer-Encoding，那么
+    Content-Length将被忽视”。这句话翻译的优点饶，其实关键就一点：有了Transfer-Encoding，则不能有Content-Length。
+ 
+     在包含消息内容的header中，如果有content-length字段，那么该字段对应的值必须完全和消息主题里面的长度匹配。
+     “The entity-length of a message is the length of the message-body before any transfer-codings have been applied”
+     也就是有chunk就不能有content-length 。
+     其实后面几条几乎可以忽视，简单总结后如下：
+     1、Content-Length如果存在并且有效的话，则必须和消息内容的传输长度完全一致。（经过测试，如果过短则会截断，过长则会导致超时。）
+     
+     2、如果存在Transfer-Encoding（重点是chunked），则在header中不能有Content-Length，有也会被忽视。
+     
+     3、如果采用短连接，则直接可以通过服务器关闭连接来确定消息的传输长度。（这个很容易懂）
+     
+     结合HTTP协议其他的特点，比如说Http1.1之前的不支持keep alive。那么可以得出以下结论：
+     
+     1、在Http 1.0及之前版本中，content-length字段可有可无。
+     
+     2、在http1.1及之后版本。如果是keep alive，则content-length和chunk必然是二选一。若是非keep alive，则和http1.0一样。content-length可有可无。
+
+
+                                http 下载断点续传
+ 其实断点续传的原理很简单，就是在Http的请求上和一般的下载有所不同而已。
+ 打个比方，浏览器请求服务器上的一个文时，所发出的请求如下：
+ 假设服务器域名为wwww.scu.edu.cn，文件名为down.zip。
+ GET /down.zip HTTP/1.1
+ Accept: image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, application/vnd.ms-
+ excel, application/msword, application/vnd.ms-powerpoint, */*
+Accept-Language: zh-cn
+Accept-Encoding: gzip, deflate
+User-Agent: Mozilla/4.0 (compatible; MSIE 5.01; Windows NT 5.0)
+Connection: Keep-Alive
+
+服务器收到请求后，按要求寻找请求的文件，提取文件的信息，然后返回给浏览器，返回信息如下：
+
+200
+Content-Length=106786028
+Accept-Ranges=bytes
+Date=Mon, 30 Apr 2001 12:56:11 GMT
+ETag=W/"02ca57e173c11:95b"
+Content-Type=application/octet-stream
+Server=Microsoft-IIS/5.0
+Last-Modified=Mon, 30 Apr 2001 12:56:11 GMT
+
+所谓断点续传，也就是要从文件已经下载的地方开始继续下载。所以在客户端浏览器传给
+Web服务器的时候要多加一条信息--从哪里开始。
+下面是用自己编的一个"浏览器"来传递请求信息给Web服务器，要求从2000070字节开始。
+GET /down.zip HTTP/1.0
+User-Agent: NetFox
+RANGE: bytes=2000070-
+Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+
+仔细看一下就会发现多了一行RANGE: bytes=2000070-这一行的意思就是告诉服务器down.zip这个文件从2000070字节开始传，前面的字节不用传了。
+服务器收到这个请求以后，返回的信息如下：
+
+206
+Content-Length=106786028
+Content-Range=bytes 2000070-106786027/106786028
+Date=Mon, 30 Apr 2001 12:55:20 GMT
+ETag=W/"02ca57e173c11:95b"
+Content-Type=application/octet-stream
+Server=Microsoft-IIS/5.0
+Last-Modified=Mon, 30 Apr 2001 12:55:20 GMT
+
+和前面服务器返回的信息比较一下，就会发现增加了一行：
+Content-Range=bytes 2000070-106786027/106786028
+返回的代码也改为206了，而不再是200了。
+知道了以上原理，就可以进行断点续传的编程了。
+
+
+
+                            如何提供下载文件名
+1.在响应的消息头中取得
+Content-Disposition: attachment; filename="服务器应答的文件名"
+例子：
+
+2.在请求的URL中没有含有，但请求时会响应302然后在location头域中新的URL中取得。
+消息头里让你跳转到真实的URL
+例子：http://a.tgbus.com/download/33747/1
+
+3.最后一种就是直接真实的URL
+例子：http://sq.onlinedown.net/down/SQLiteManager_175053.zip
+
+
+                        Content-Disposition值可以有以下几种编码格式 
+1. 直接urlencode： 
+
+    Content-Disposition: attachment; filename="struts2.0%E4%B8%AD%E6%96%87%E6%95%99%E7%A8%8B.chm" 
+
+2. Base64编码： 
+
+    Content-Disposition: attachment; filename="=?UTF8?B?c3RydXRzMi4w5Lit5paH5pWZ56iLLmNobQ==?=" 
+
+3. RFC2231规定的标准： 
+
+    Content-Disposition: attachment; filename*=UTF-8''%E5%9B%9E%E6%89%A7.msg 
+
+4. 直接ISO编码的文件名： 
+
+    Content-Disposition: attachment;filename="测试.txt" 
+
+然后，各浏览器支持的对应编码格式为： 
+
+1.  IE浏览器，采用URLEncoder编码 
+2.  Opera浏览器，采用filename*方式 
+3.  Safari浏览器，采用ISO编码的中文输出 
+4.  Chrome浏览器，采用Base64编码或ISO编码的中文输出 
+5.  FireFox浏览器，采用Base64或filename*或ISO编码的中文输出
+
+
+                            http 基本认证
+http://zh.wikipedia.org/wiki/HTTP%E5%9F%BA%E6%9C%AC%E8%AE%A4%E8%AF%81
+
