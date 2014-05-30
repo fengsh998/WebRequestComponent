@@ -39,6 +39,8 @@ typedef enum {
 @protocol FQWebRequestProgressDelegate;
 @protocol FQWebRequestInGroupDelegate;
 
+#pragma mark - block
+@class FQWebRequestBlockManager;
 
 @class FormDataPackage;
 
@@ -47,10 +49,16 @@ typedef enum {
 @private
     RequestMethod                           m_requestMethod;
     id<FQWebRequestDelegate>                delegate;
+    FQWebRequestBlockManager                *reqBlockManager;
 }
 /*  cookies 持久性，当为True时，保存响应的cookies 否则不保存*/
 @property (nonatomic,assign)   BOOL                         autoSaveUseCookies;
-@property (nonatomic,assign)   id<FQWebRequestDelegate>                delegate;
+@property (nonatomic,assign)   id<FQWebRequestDelegate>     delegate;
+/*
+    使用block方式进行回调，需要设置此属性，默认为nil.
+    使用时xxx.reqBlockManager = [[[FQWebRequestBlockManager alloc]init]autorelease];
+ */
+@property (nonatomic,retain)   FQWebRequestBlockManager     *reqBlockManager;
 
 #pragma mark - 类方法
 + (id)requestWithURL:(NSString *)url;
@@ -96,11 +104,16 @@ typedef FQWebRequest FQHttpRequest;
                                             多个请求作为一组应答
  **************************************************************************************************/
 
+@class FQWebGroupRequest;
+typedef void (^FQWebGroupAllRequestFinishBlock)(FQWebGroupRequest * groupRequests);
+
 @interface FQWebGroupRequest : FQWebRequestAbstractList
 {
     id<FQWebRequestInGroupDelegate>                delegate;
+    FQWebGroupAllRequestFinishBlock                finishBlock;
 }
 @property (nonatomic,assign)   id<FQWebRequestInGroupDelegate>                delegate;
+@property (nonatomic,copy) FQWebGroupAllRequestFinishBlock                finishBlock;
 /**
  *	@说明	添加请求到组中
  *

@@ -14,6 +14,9 @@
 #import "FQWebRequestDelegate.h"
 #import "FQWebEngineZlibX.h"
 
+#pragma mark - block
+#import "FQWebRequestBlock.h"
+
 #if TARGET_OS_IPHONE
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <UIKit/UIKit.h>
@@ -39,6 +42,7 @@
 @synthesize tag;
 @synthesize identity;
 @synthesize allowComplicating;
+@synthesize reqBlockManager;
 
 #pragma mark - 类方法
 + (id)requestWithURL:(NSString *)url
@@ -271,6 +275,13 @@
             authdic = [[delegate authenticationNeededForRequest:self]mutableCopy];
         });
     }
+    
+    //block的方式回调
+    if(reqBlockManager && reqBlockManager.authenticationNeededBlock){
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            authdic = [reqBlockManager.authenticationNeededBlock(self)mutableCopy];
+        });
+	}
 
     return [authdic autorelease];
 }
@@ -282,6 +293,13 @@
     {
         dispatch_sync(dispatch_get_main_queue(), ^{
             authdic = [[delegate proxyAuthenticationNeededForRequest:self]mutableCopy];
+        });
+    }
+    
+    //block方式回调
+    if (reqBlockManager && reqBlockManager.proxyAuthenticationNeededBlock) {
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            authdic = [reqBlockManager.proxyAuthenticationNeededBlock(self)mutableCopy];
         });
     }
     
@@ -298,6 +316,13 @@
         });
     }
     
+    //block方式回调
+    if (reqBlockManager && reqBlockManager.isContinueWhenUnsafeConnectBlock) {
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            willcontinue = reqBlockManager.isContinueWhenUnsafeConnectBlock(self);
+        });
+    }
+    
     return willcontinue;
 }
 
@@ -307,6 +332,13 @@
     {
         dispatch_async(dispatch_get_main_queue(), ^{
             [delegate requestStarted:self];
+        });
+    }
+    
+    //block方式回调
+    if (reqBlockManager && reqBlockManager.startedBlock) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            reqBlockManager.startedBlock(self);
         });
     }
 }
@@ -319,6 +351,13 @@
             [delegate requestFailed:self];
         });
     }
+    
+    //block方式回调
+    if (reqBlockManager && reqBlockManager.failedBlock) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            reqBlockManager.failedBlock(self);
+        });
+    }
 }
 
 - (void)requestFinish
@@ -327,6 +366,13 @@
     {
         dispatch_async(dispatch_get_main_queue(), ^{
             [delegate requestFinished:self];
+        });
+    }
+    
+    //block方式回调
+    if (reqBlockManager && reqBlockManager.finishedBlock) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            reqBlockManager.finishedBlock(self);
         });
     }
 }
@@ -367,6 +413,7 @@
 
 @implementation FQWebGroupRequest
 @synthesize delegate;
+@synthesize finishBlock;
 
 - (id)init
 {
@@ -418,7 +465,16 @@
 {
     if ([delegate respondsToSelector:@selector(allRequestFinish:)])
     {
-        [delegate allRequestFinish:self];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [delegate allRequestFinish:self];
+        });
+    }
+    
+    //block方式
+    if (finishBlock) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            finishBlock(self);
+        });
     }
 }
 
@@ -785,6 +841,20 @@
             }
         });
     }
+    
+    //block 方式回调
+    if (self.reqBlockManager && self.reqBlockManager.downLoadProgressBlock) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.responseHeader.statusCode == 206)
+            {
+                self.reqBlockManager.downLoadProgressBlock(self,self.originalFileTotalSize,self.breakpointFilesize + recevicesize);
+            }
+            else
+            {
+                self.reqBlockManager.downLoadProgressBlock(self,totalsize,recevicesize);
+            }
+        });
+    }
 }
 
 - (void)requestCanceled
@@ -897,6 +967,14 @@
     {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.delegate uploadProgress:self withTotalSize:totalsize withUploadsize:sendsize];
+        });
+    }
+    
+    //block
+    if (self.reqBlockManager && self.reqBlockManager.uploadProgressBlock)
+    {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.reqBlockManager.uploadProgressBlock(self,totalsize,sendsize);
         });
     }
 }
